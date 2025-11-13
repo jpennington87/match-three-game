@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match 3 - Element Orbs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1>Match 3 - Element Battle</h1>
+            <div class="monster-battle">
+                <div class="monster-container">
+                    <div class="monster-info">
+                        <div class="monster-name">Ally</div>
+                        <div class="health-bar-container">
+                            <div class="health-bar" id="allyHealthBar"></div>
+                            <span class="health-text" id="allyHealthText">100/100</span>
+                        </div>
+                        <div class="monster-element" id="allyElement"></div>
+                    </div>
+                    <canvas id="allyMonsterCanvas" width="120" height="120"></canvas>
+                </div>
+                <div class="vs">VS</div>
+                <div class="monster-container">
+                    <div class="monster-info">
+                        <div class="monster-name">Enemy</div>
+                        <div class="health-bar-container">
+                            <div class="health-bar" id="enemyHealthBar"></div>
+                            <span class="health-text" id="enemyHealthText">100/100</span>
+                        </div>
+                        <div class="monster-element" id="enemyElement"></div>
+                    </div>
+                    <canvas id="enemyMonsterCanvas" width="120" height="120"></canvas>
+                </div>
+            </div>
+            <div class="last-match-display" id="lastMatchDisplay" style="display: none;">
+                <span>Last Match: <span id="lastMatchElement">-</span></span>
+            </div>
+            <div class="streak-display" id="streakDisplay" style="display: none;">
+                <span>Streak: <span id="streakCount">0</span>x</span>
+            </div>
+            <div class="loot-display">
+                <div class="loot-title">Treasure Collected:</div>
+                <div class="loot-items" id="lootItems">
+                    <span class="loot-count">💎 <span id="gemCount">0</span></span>
+                    <span class="loot-count">🪙 <span id="coinCount">0</span></span>
+                    <span class="loot-count">⭐ <span id="starCount">0</span></span>
+                    <span class="loot-count">💠 <span id="crystalCount">0</span></span>
+                </div>
+            </div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="instructions">
+            <p>Click and drag to swap orbs. Match your ally's element to attack the enemy! Match the enemy's element and they'll attack you!</p>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
+
