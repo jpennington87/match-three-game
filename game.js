@@ -40,6 +40,92 @@ let lootAnimations = []; // Array of { x, y, type, progress: 0-1 }
 const CHEST_SPAWN_CHANCE = 0.15; // 15% chance per match
 const LOOT_TYPES = ['gem', 'coin', 'star', 'crystal'];
 
+// Audio system
+let audioCtx = null;
+
+function getAudioContext() {
+    if (typeof window === 'undefined') return null;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+    if (!audioCtx) {
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+}
+
+function playTone(options = {}) {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const {
+        type = 'sine',
+        frequency = 440,
+        duration = 0.3,
+        volume = 0.2,
+        attack = 0.01,
+        release = 0.1,
+        frequencySlide = 0
+    } = options;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, now);
+    if (frequencySlide !== 0) {
+        osc.frequency.linearRampToValueAtTime(frequency + frequencySlide, now + duration);
+    }
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + attack);
+    gain.gain.setValueAtTime(volume, now + duration - release);
+    gain.gain.linearRampToValueAtTime(0, now + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + duration + 0.05);
+}
+
+function playMatchSound(type) {
+    switch (type) {
+        case 'allyAttack':
+            playTone({ type: 'sawtooth', frequency: 600, frequencySlide: 200, duration: 0.35, volume: 0.25 });
+            playTone({ type: 'triangle', frequency: 900, duration: 0.2, volume: 0.15, attack: 0.02, release: 0.05 });
+            break;
+        case 'enemyAttack':
+            playTone({ type: 'square', frequency: 200, frequencySlide: -120, duration: 0.4, volume: 0.3 });
+            playTone({ type: 'sine', frequency: 120, duration: 0.3, volume: 0.2, attack: 0.01, release: 0.08 });
+            break;
+        default:
+            playTone({ type: 'triangle', frequency: 500, duration: 0.2, volume: 0.15 });
+            break;
+    }
+}
+
+function playChestSound() {
+    playTone({ type: 'sine', frequency: 800, duration: 0.4, volume: 0.2, frequencySlide: 200 });
+    setTimeout(() => playTone({ type: 'triangle', frequency: 1200, duration: 0.3, volume: 0.18 }), 80);
+    setTimeout(() => playTone({ type: 'sine', frequency: 1500, duration: 0.25, volume: 0.15 }), 140);
+}
+
+function playStreakSound(type) {
+    if (type === 'increase') {
+        playTone({ type: 'sawtooth', frequency: 700, duration: 0.3, volume: 0.22, frequencySlide: 180 });
+    } else if (type === 'broken') {
+        playTone({ type: 'square', frequency: 180, duration: 0.35, volume: 0.25, frequencySlide: -60 });
+    }
+}
+
+function playNeutralMatchSound() {
+    playTone({ type: 'sine', frequency: 450, duration: 0.18, volume: 0.12 });
+}
+
 // Animation state
 let swapAnimation = null; // { cell1: {row, col}, cell2: {row, col}, progress: 0-1 }
 let fallingAnimations = []; // Array of { fromRow, toRow, col, element, progress: 0-1 }
@@ -283,6 +369,7 @@ function openChest(chest) {
     if (chest.opened) return;
     
     chest.opened = true;
+    playChestSound();
     
     // Generate random loot (1-3 items)
     const lootCount = 1 + Math.floor(Math.random() * 3);
@@ -467,9 +554,13 @@ function applyDamage(matchedElement, isPlayerMove = false) {
     
     const baseDamage = 10;
     let damage = baseDamage;
+    let matchSoundType = 'neutral';
     
     // Only update streak for player moves
     if (isPlayerMove) {
+        const previousStreak = streakCount;
+        const previousElement = lastMatchedElement;
+        
         // Update last player match display
         lastPlayerMatchElement = matchedElement;
         const lastMatchDisplay = document.getElementById('lastMatchDisplay');
@@ -484,9 +575,10 @@ function applyDamage(matchedElement, isPlayerMove = false) {
         lastMatchDisplay.style.display = 'block';
         
         // Check if this is a streak (only for player moves)
-        if (matchedElement === lastMatchedElement) {
+        if (matchedElement === lastMatchedElement && lastMatchedElement !== null) {
             streakCount++;
             damage = baseDamage * (1 + streakCount * 0.5); // 1x, 1.5x, 2x, 2.5x, etc.
+            playStreakSound('increase');
             
             // Show streak display
             const streakDisplay = document.getElementById('streakDisplay');
@@ -494,9 +586,17 @@ function applyDamage(matchedElement, isPlayerMove = false) {
             streakDisplay.style.display = 'block';
             streakCountEl.textContent = streakCount + 1;
         } else {
+            if (previousElement !== null && previousStreak > 0 && matchedElement !== previousElement) {
+                playStreakSound('broken');
+            }
             streakCount = 0;
             lastMatchedElement = matchedElement;
             document.getElementById('streakDisplay').style.display = 'none';
+        }
+        
+        // Ensure lastMatchedElement is set after first move
+        if (lastMatchedElement === null) {
+            lastMatchedElement = matchedElement;
         }
     }
     // For cascade matches, use current streak but don't update it
@@ -507,6 +607,7 @@ function applyDamage(matchedElement, isPlayerMove = false) {
     
     // Apply damage based on element match
     if (matchedElement === allyMonster.element) {
+        matchSoundType = 'allyAttack';
         // Ally attacks enemy
         enemyMonster.health = Math.max(0, enemyMonster.health - damage);
         updateHealthBars();
@@ -517,6 +618,7 @@ function applyDamage(matchedElement, isPlayerMove = false) {
             enemyCanvas.style.transform = 'scale(1)';
         }, 200);
     } else if (matchedElement === enemyMonster.element) {
+        matchSoundType = 'enemyAttack';
         // Enemy attacks ally
         allyMonster.health = Math.max(0, allyMonster.health - damage);
         updateHealthBars();
@@ -526,8 +628,13 @@ function applyDamage(matchedElement, isPlayerMove = false) {
         setTimeout(() => {
             allyCanvas.style.transform = 'scale(1)';
         }, 200);
+    } else {
+        playMatchSound('neutral');
     }
-    // If element doesn't match either, nothing happens
+    
+    if (matchSoundType !== 'neutral') {
+        playMatchSound(matchSoundType);
+    }
     
     // Check for game over
     if (allyMonster.health <= 0 || enemyMonster.health <= 0) {
@@ -726,24 +833,29 @@ function animateMatchRemoval(matches, matchGroups, isPlayerMove, callback) {
             // Apply damage for each match group
             // Only the first match group counts as player move (if it is one)
             let firstGroup = true;
+            let openedDuringThisMatch = false;
             for (let group of matchGroups) {
                 applyDamage(group.element, isPlayerMove && firstGroup);
                 
                 // Check if matching ally element opens chests
                 if (group.element === allyMonster.element) {
-                    // Open all unopened chests
+                    let openedThisGroup = false;
                     for (let chest of chests) {
                         if (!chest.opened) {
                             openChest(chest);
+                            openedThisGroup = true;
                         }
                     }
-                    // Start loot animation if there are any
-                    if (lootAnimations.length > 0) {
-                        animateLoot();
+                    if (openedThisGroup) {
+                        openedDuringThisMatch = true;
                     }
                 }
                 
                 firstGroup = false;
+            }
+            
+            if (openedDuringThisMatch && lootAnimations.length > 0) {
+                animateLoot();
             }
             
             // Spawn chests after matches
@@ -1303,6 +1415,7 @@ function render() {
     
     // Draw chests (on top of orbs)
     for (let chest of chests) {
+        if (chest.opened) continue;
         const x = chest.col * CELL_SIZE + CELL_SIZE / 2;
         const y = chest.row * CELL_SIZE + CELL_SIZE / 2;
         drawChest(x, y, chest.opened);
